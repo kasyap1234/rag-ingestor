@@ -1,0 +1,21 @@
+# Sample Document for Testing
+
+This is a test document to verify the RAG data cleaning service works correctly.
+
+## Features to Test
+
+The service should handle:
+- Text extraction from various formats
+- Unicode normalization
+- Whitespace cleanup
+- Chunking for large documents
+
+## Sample Content
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.
+
+### Nested Section
+
+More content here with special characters like "smart quotes" and dashes—like this one.
+
+The quick brown fox jumps over the lazy dog. This sentence contains all letters of the alphabet.
