@@ -1,0 +1,291 @@
+openapi: 3.0.0
+info:
+  title: RAG Ingestor API
+  description: |
+    A powerful API for ingesting, cleaning, parsing, and chunking documents for RAG (Retrieval-Augmented Generation) pipelines. 
+    Supports PDF, DOCX, HTML, and Text files with automatic table extraction, metadata cleaning, and semantic chunking.
+  version: 1.0.0
+servers:
+  - url: https://rag-ingestor.p.rapidapi.com
+    description: RapidAPI Proxy
+
+components:
+  securitySchemes:
+    rapidapi_proxy_secret:
+      type: apiKey
+      name: X-RapidAPI-Proxy-Secret
+      in: header
+      description: Auto-generated secret by RapidAPI to verify requests coming from their proxy.
+
+  schemas:
+    IngestResponse:
+      type: object
+      properties:
+        filename:
+          type: string
+          example: "document.pdf"
+        content:
+          type: string
+          description: Cleaned markdown content of the file
+        chunks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChunkInfo'
+        tables:
+          type: array
+          items:
+            $ref: '#/components/schemas/TableInfo'
+        metadata:
+          $ref: '#/components/schemas/IngestMetadata'
+        extracted:
+          $ref: '#/components/schemas/DocumentMetadata'
+
+    ChunkInfo:
+      type: object
+      properties:
+        content:
+          type: string
+        header:
+          type: string
+        index:
+          type: integer
+        meta:
+          type: object
+          additionalProperties:
+            type: string
+
+    TableInfo:
+      type: object
+      properties:
+        headers:
+          type: array
+          items:
+            type: string
+        rows:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+        markdown:
+          type: string
+
+    IngestMetadata:
+      type: object
+      properties:
+        original_size:
+          type: integer
+        cleaned_size:
+          type: integer
+        num_chunks:
+          type: integer
+        num_tables:
+          type: integer
+        file_type:
+          type: string
+        chunk_mode:
+          type: string
+
+    DocumentMetadata:
+      type: object
+      description: Extracted semantic metadata from the document (if enabled)
+      properties:
+        title:
+          type: string
+        author:
+          type: string
+        summary:
+          type: string
+        keywords:
+          type: array
+          items:
+            type: string
+
+    BatchResponse:
+      type: object
+      properties:
+        total_files:
+          type: integer
+        processed:
+          type: integer
+        failed:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/IngestResponse'
+
+    AsyncResponse:
+      type: object
+      properties:
+        job_id:
+          type: string
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        status:
+          type: string
+          example: "pending"
+        message:
+          type: string
+
+    JobStatus:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        created_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+        result:
+          $ref: '#/components/schemas/IngestResponse'
+
+security:
+  - rapidapi_proxy_secret: []
+
+paths:
+  /health:
+    get:
+      summary: Health Check
+      description: Check if the API is running and healthy. Does not require authentication.
+      security: [] 
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+
+  /ingest:
+    post:
+      summary: Ingest Single File
+      description: Upload a file to parse, clean, and optionally chunk it. Returns structured data suitable for RAG.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The document to ingest (PDF, DOCX, TXT, HTML)
+                format:
+                  type: string
+                  enum: [json, text, markdown]
+                  default: json
+                  description: Output format. 'json' returns full structure, 'text'/'markdown' returns content only.
+                chunk:
+                  type: boolean
+                  default: false
+                  description: Whether to split the document into chunks.
+                chunk_mode:
+                  type: string
+                  enum: [semantic, recursive]
+                  default: semantic
+                  description: Strategy for chunking. 'semantic' uses structural boundaries.
+                chunk_size:
+                  type: integer
+                  description: Target size for chunks (in characters).
+                  default: 1500
+                extract_metadata:
+                  type: boolean
+                  default: true
+                  description: Whether to attempt extraction of title, author, and keywords.
+      responses:
+        '200':
+          description: Successful ingestion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResponse'
+            text/markdown:
+              schema:
+                type: string
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Bad Request
+
+  /ingest/batch:
+    post:
+      summary: Batch Ingest (ZIP)
+      description: Upload a ZIP file containing multiple documents to process them in bulk.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: ZIP file containing documents
+      responses:
+        '200':
+          description: Batch processing results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResponse'
+
+  /ingest/async:
+    post:
+      summary: Async Ingest
+      description: Upload a file for background processing. Useful for large files. Returns a Job ID to poll.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The document to ingest
+                webhook_url:
+                  type: string
+                  description: Optional URL to call when processing is complete (POST request with job details)
+      responses:
+        '202':
+          description: Job accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsyncResponse'
+
+  /jobs/{id}:
+    get:
+      summary: Get Job Status
+      description: Retrieve the status and results of an async ingestion job.
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+          description: The Job ID returned by /ingest/async
+      responses:
+        '200':
+          description: Job details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobStatus'
+        '404':
+          description: Job not found

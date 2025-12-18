@@ -12,6 +12,7 @@ import (
 	"github.com/kasyap/rag-ingestor/internal/cleaner"
 	"github.com/kasyap/rag-ingestor/internal/extractor"
 	"github.com/kasyap/rag-ingestor/internal/jobs"
+	"github.com/kasyap/rag-ingestor/internal/middleware"
 	"github.com/kasyap/rag-ingestor/internal/parser"
 	"github.com/labstack/echo/v4"
 )
@@ -43,11 +44,17 @@ func (a *App) Run() {
 }
 
 func (a *App) RegisterRoutes() {
+	// Health check is public (no auth required)
 	a.router.GET("/health", a.HealthCheck)
-	a.router.POST("/ingest", a.Ingest)
-	a.router.POST("/ingest/batch", a.IngestBatch)
-	a.router.POST("/ingest/async", a.IngestAsync)
-	a.router.GET("/jobs/:id", a.GetJob)
+
+	// Protected API routes - requires RapidAPI authentication
+	api := a.router.Group("")
+	api.Use(middleware.RapidAPIAuth())
+
+	api.POST("/ingest", a.Ingest)
+	api.POST("/ingest/batch", a.IngestBatch)
+	api.POST("/ingest/async", a.IngestAsync)
+	api.GET("/jobs/:id", a.GetJob)
 }
 
 // HealthCheck returns the health status of the application
@@ -59,11 +66,11 @@ func (a *App) HealthCheck(c echo.Context) error {
 
 // IngestResponse represents the API response for ingestion
 type IngestResponse struct {
-	Filename  string                     `json:"filename"`
-	Content   string                     `json:"content,omitempty"`
-	Chunks    []ChunkInfo                `json:"chunks,omitempty"`
-	Tables    []TableInfo                `json:"tables,omitempty"`
-	Metadata  IngestMetadata             `json:"metadata"`
+	Filename  string                      `json:"filename"`
+	Content   string                      `json:"content,omitempty"`
+	Chunks    []ChunkInfo                 `json:"chunks,omitempty"`
+	Tables    []TableInfo                 `json:"tables,omitempty"`
+	Metadata  IngestMetadata              `json:"metadata"`
 	Extracted *extractor.DocumentMetadata `json:"extracted,omitempty"`
 }
 
@@ -220,7 +227,7 @@ func (a *App) IngestAsync(c echo.Context) error {
 	}
 
 	webhookURL := c.FormValue("webhook_url")
-	
+
 	// Create job
 	job := a.jobManager.CreateJob(1, webhookURL)
 
@@ -277,7 +284,7 @@ func (a *App) IngestAsync(c echo.Context) error {
 // GetJob returns job status and results
 func (a *App) GetJob(c echo.Context) error {
 	jobID := c.Param("id")
-	
+
 	job, ok := a.jobManager.GetJob(jobID)
 	if !ok {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "job not found"})
